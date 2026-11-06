@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Forza Maggica Roma</title>
+  <meta name="description" content="Tutte le notizie sulla Roma: campionato, coppe, mercato e tifosi. Sito di tifosi, non ufficiale.">
+  <meta name="theme-color" content="#7a0f22">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/emblem.svg" type="image/svg+xml">
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Forza Roma">
+  <meta property="og:title" content="Forza Maggica Roma">
+  <meta property="og:description" content="Notizie, partite e classifica della Roma. Sempre.">
+  <meta property="og:image" content="icons/icon-512.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <a class="skip" href="#notizie">Vai alle notizie</a>
+
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="#top" aria-label="Forza Maggica Roma, torna su">
+        <img class="brand__emblem" src="icons/emblem.svg" alt="" width="44" height="44">
+        <span class="brand__text">
+          <span class="brand__kicker">Forza</span>
+          <span class="brand__name">Maggica <em>Roma</em></span>
+        </span>
+      </a>
+      <div class="topbar__actions">
+        <button class="btn btn--ghost" id="installBtn" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0l-5-5m5 5l5-5M5 21h14"/></svg>
+          <span>Installa</span>
+        </button>
+        <button class="btn btn--icon" id="refreshBtn" aria-label="Aggiorna notizie">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 10-2.3 5.7M20 4v7h-7"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="ticker" aria-label="Ultim'ora">
+      <span class="ticker__label">Ultim'ora</span>
+      <div class="ticker__track"><div class="ticker__move" id="ticker"><span>Caricamento notizie giallorosse…</span></div></div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- HERO: partite -->
+    <section class="hero" id="partite" aria-labelledby="heroTitle">
+      <div class="hero__bg" aria-hidden="true"><span>1927</span></div>
+      <div class="wrap hero__grid">
+        <article class="match-card" id="nextMatch" aria-live="polite">
+          <h2 class="eyebrow" id="heroTitle">Prossima partita</h2>
+          <div class="match-card__body skeleton-block"></div>
+        </article>
+        <div class="hero__side">
+          <article class="mini-card" id="lastMatch">
+            <h2 class="eyebrow">Ultimo risultato</h2>
+            <div class="skeleton-line"></div><div class="skeleton-line short"></div>
+          </article>
+          <article class="mini-card" id="formCard">
+            <h2 class="eyebrow">Forma</h2>
+            <div class="form" id="form"></div>
+            <p class="mini-card__note" id="formNote"></p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <div class="wrap layout">
+      <!-- NOTIZIE -->
+      <section class="news" id="notizie" aria-labelledby="newsTitle">
+        <div class="section-head">
+          <h2 class="section-title" id="newsTitle">Notizie</h2>
+          <p class="section-meta" id="newsMeta">Aggiornamento in corso…</p>
+        </div>
+        <div class="chips" role="tablist" aria-label="Filtra notizie" id="chips">
+          <button class="chip is-active" role="tab" aria-selected="true" data-cat="tutte">Tutte</button>
+          <button class="chip" role="tab" aria-selected="false" data-cat="campionato">Campionato</button>
+          <button class="chip" role="tab" aria-selected="false" data-cat="coppe">Coppe</button>
+          <button class="chip" role="tab" aria-selected="false" data-cat="mercato">Mercato</button>
+          <button class="chip" role="tab" aria-selected="false" data-cat="tifosi">Tifosi</button>
+        </div>
+        <div class="news-grid" id="newsGrid" aria-live="polite">
+          <div class="card skeleton-card"></div><div class="card skeleton-card"></div>
+          <div class="card skeleton-card"></div><div class="card skeleton-card"></div>
+        </div>
+        <button class="btn btn--more" id="moreBtn" hidden>Altre notizie</button>
+      </section>
+
+      <!-- SIDEBAR -->
+      <aside class="side">
+        <section class="panel" id="classifica" aria-labelledby="tableTitle">
+          <div class="panel__head">
+            <h2 class="panel__title" id="tableTitle">Classifica Serie A</h2>
+            <div class="seg" role="tablist" aria-label="Competizione">
+              <button class="seg__btn is-active" data-table="ita.1" aria-selected="true" role="tab">Serie A</button>
+              <button class="seg__btn" data-table="uefa.champions" aria-selected="false" role="tab">Champions</button>
+            </div>
+          </div>
+          <div class="table-wrap" id="tableWrap"><div class="skeleton-block tall"></div></div>
+          <p class="panel__foot" id="tableFoot"></p>
+        </section>
+
+        <section class="panel" id="calendario" aria-labelledby="calTitle">
+          <div class="panel__head">
+            <h2 class="panel__title" id="calTitle">Calendario</h2>
+            <div class="seg" role="tablist" aria-label="Partite">
+              <button class="seg__btn is-active" data-cal="next" aria-selected="true" role="tab">Prossime</button>
+              <button class="seg__btn" data-cal="past" aria-selected="false" role="tab">Risultati</button>
+            </div>
+          </div>
+          <ol class="fixtures" id="fixtures"><li class="skeleton-line"></li><li class="skeleton-line"></li><li class="skeleton-line"></li></ol>
+        </section>
+
+        <section class="panel panel--sources">
+          <h2 class="panel__title">Le fonti</h2>
+          <ul class="sources" id="sourcesList"></ul>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap">
+      <p class="footer__cry">Daje Roma, daje!</p>
+      <p>Forza Maggica Roma è un sito di tifosi, non ufficiale, senza alcun legame con A.S. Roma S.p.A.
+        Le notizie appartengono alle testate che le pubblicano: ogni articolo rimanda alla fonte originale.
+        Partite e classifiche: ESPN.</p>
+    </div>
+  </footer>
+
+  <nav class="tabbar" aria-label="Sezioni">
+    <a href="#partite" data-nav="partite"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7l4 3-1.5 5h-5L8 10z"/></svg>Partite</a>
+    <a href="#notizie" data-nav="notizie" class="is-active"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h13v14H6a2 2 0 01-2-2zM17 9h3v8a2 2 0 01-2 2M8 9h5M8 13h5"/></svg>Notizie</a>
+    <a href="#classifica" data-nav="classifica"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V10M12 20V4M19 20v-7"/></svg>Classifica</a>
+    <a href="#calendario" data-nav="calendario"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Calendario</a>
+  </nav>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <div class="ios-hint" id="iosHint" hidden>
+    <p>Per installare l'app: tocca <strong>Condividi</strong> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4l4 4M6 11v9h12v-9"/></svg> e poi <strong>Aggiungi alla schermata Home</strong>.</p>
+    <button class="btn btn--icon" id="iosHintClose" aria-label="Chiudi">✕</button>
+  </div>
+
+  <script src="js/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Forza Maggica Roma">
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#a3172f"/>
+      <stop offset="1" stop-color="#6e0c1d"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#e09a12"/>
+    </linearGradient>
+  </defs>
+  <path d="M50 4 L90 14 V48 C90 72 72 88 50 96 C28 88 10 72 10 48 V14 Z" fill="url(#field)" stroke="url(#gold)" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M50 11 L83 19.5 V48 C83 68 68 81.5 50 88.5 C32 81.5 17 68 17 48 V19.5 Z" fill="none" stroke="#f4b223" stroke-opacity=".45" stroke-width="1.2"/>
+  <!-- lupo stilizzato -->
+  <g stroke="#6e0c1d" stroke-width=".6" stroke-linejoin="round">
+    <polygon points="30,23 40,40 25,44" fill="#f4b223"/>
+    <polygon points="70,23 60,40 75,44" fill="#e09a12"/>
+    <polygon points="31.5,29 36.5,39 29,41" fill="#b8740e"/>
+    <polygon points="68.5,29 63.5,39 71,41" fill="#b8740e"/>
+    <polygon points="25,44 39,40 50,45 50,84 43,77 33,72 36,68 25,66 30,61 20,56" fill="#ffc53d"/>
+    <polygon points="75,44 61,40 50,45 50,84 57,77 67,72 64,68 75,66 70,61 80,56" fill="#e9a21a"/>
+    <polygon points="50,47 44,62 46,78 50,83 54,78 56,62" fill="#ffe08a"/>
+    <polygon points="45.5,76 54.5,76 50,82.5" fill="#3b0710"/>
+  </g>
+  <polygon points="35,54 45,57 37,59.5" fill="#6e0c1d"/>
+  <polygon points="65,54 55,57 63,59.5" fill="#6e0c1d"/>
+</svg>
