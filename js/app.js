@@ -15,22 +15,25 @@
 
   const gn = q => 'https://news.google.com/rss/search?q=' + encodeURIComponent(q) + '&hl=it&gl=IT&ceid=IT:it';
 
-  // Fonti: testate giallorosse + ricerche Google News per categoria
+  // Fonti: testate giallorosse + ricerche Google News per categoria.
+  // "via" = intermediari da provare in ordine. Il carico è diviso tra Jina e rss2json
+  // perché i servizi gratuiti limitano le richieste per utente.
   const SOURCES = [
-    { id: 'forzaroma', name: 'Forzaroma.info', site: 'https://www.forzaroma.info', url: 'https://www.forzaroma.info/feed' },
-    { id: 'vocegiallorossa', name: 'Vocegiallorossa', site: 'https://www.vocegiallorossa.it', url: 'https://www.vocegiallorossa.it/rss/' },
-    { id: 'romanews', name: 'RomaNews', site: 'https://www.romanews.eu', url: 'https://www.romanews.eu/feed/' },
-    { id: 'siamolaroma', name: 'Siamo la Roma', site: 'https://www.siamolaroma.it', url: 'https://www.siamolaroma.it/feed/' },
-    { id: 'cds', name: 'Corriere dello Sport', site: 'https://www.corrieredellosport.it/calcio/serie-a/roma', url: 'https://www.corrieredellosport.it/rss/calcio/serie-a/roma' },
-    { id: 'gn-campionato', name: 'Google News · Campionato', site: 'https://news.google.com', cat: 'campionato', gn: true,
-      url: gn('(giallorossi OR "AS Roma") ("Serie A" OR campionato) when:4d') },
-    { id: 'gn-coppe', name: 'Google News · Coppe', site: 'https://news.google.com', cat: 'coppe', gn: true,
+    { id: 'forzaroma', name: 'Forzaroma.info', site: 'https://www.forzaroma.info', url: 'https://www.forzaroma.info/feed', via: ['jina', 'rss2json'] },
+    { id: 'cds', name: 'Corriere dello Sport', site: 'https://www.corrieredellosport.it/calcio/serie-a/roma', url: 'https://www.corrieredellosport.it/rss/calcio/serie-a/roma', via: ['jina', 'rss2json'] },
+    { id: 'vocegiallorossa', name: 'Vocegiallorossa', site: 'https://www.vocegiallorossa.it', url: 'https://www.vocegiallorossa.it/rss/', via: ['jina', 'rss2json'] },
+    { id: 'gn-coppe', name: 'Google News · Coppe', site: 'https://news.google.com', cat: 'coppe', gn: true, via: ['rss2json'],
       url: gn('Roma ("Champions League" OR "Europa League" OR "Conference League" OR "Coppa Italia") when:7d') },
-    { id: 'gn-mercato', name: 'Google News · Mercato', site: 'https://news.google.com', cat: 'mercato', gn: true,
-      url: gn('Roma calciomercato when:4d') },
-    { id: 'gn-tifosi', name: 'Google News · Tifosi', site: 'https://news.google.com', cat: 'tifosi', gn: true,
+    { id: 'romanews', name: 'RomaNews', site: 'https://www.romanews.eu', url: 'https://www.romanews.eu/feed/', via: ['rss2json'] },
+    { id: 'gn-tifosi', name: 'Google News · Tifosi', site: 'https://news.google.com', cat: 'tifosi', gn: true, via: ['rss2json'],
       url: gn('(tifosi OR "Curva Sud" OR romanisti) (Roma OR giallorossi) when:10d') },
+    { id: 'siamolaroma', name: 'Siamo la Roma', site: 'https://www.siamolaroma.it', url: 'https://www.siamolaroma.it/feed/', via: ['rss2json'] },
+    { id: 'gn-mercato', name: 'Google News · Mercato', site: 'https://news.google.com', cat: 'mercato', gn: true, via: ['rss2json'],
+      url: gn('Roma calciomercato when:4d') },
   ];
+  const ITEMS_PER_SOURCE = 25;
+  // notizie di altre squadre pubblicate dalle testate romaniste ("Serie A - Venezia-Udinese 0-0")
+  const OFF_TOPIC = /^(serie a|serie b|serie c|premier league|liga|bundesliga|ligue 1|champions league|europa league)\s*[-–:]/i;
 
   const CAT_RULES = {
     coppe: /champions|europa league|conference league|coppa italia|supercoppa|\buefa\b|league phase|fase a gironi|ottavi|playoff europe|\bucl\b/i,
@@ -90,15 +93,16 @@
   /* =======================================================
      NOTIZIE
      ======================================================= */
-  const PROXIES = [
-    // 1) rss2json: restituisce JSON già pronto
-    async (url) => {
+  const PROXIES = {
+    // Jina Reader: restituisce l'XML originale del feed (molte notizie, con immagini)
+    jina: async (url) => parseXml(await (await okOrThrow(fetchWithTimeout('https://r.jina.ai/' + url, 15000, { headers: { 'X-Return-Format': 'html' } }))).text()),
+    // rss2json: JSON già pronto, massimo 10 notizie, limite di 10 richieste al minuto
+    rss2json: async (url) => {
       let r;
       for (let attempt = 0; attempt < 3; attempt++) {
         r = await fetchWithTimeout('https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent(url));
         if (r.status !== 429) break;
-        // troppe richieste: aspetto quanto chiede il servizio e riprovo
-        await sleep((parseInt(r.headers.get('retry-after'), 10) || 8) * 1000 + 500);
+        await sleep(8000 + attempt * 4000); // troppe richieste: aspetto e riprovo
       }
       if (!r.ok) throw new Error('rss2json ' + r.status);
       const j = await r.json();
@@ -110,10 +114,10 @@
         author: it.author || '',
       }));
     },
-    // 2) e 3) proxy "grezzi": scarico l'XML e lo leggo nel browser
-    async (url) => parseXml(await (await okOrThrow(fetchWithTimeout('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), 7000))).text()),
-    async (url) => parseXml(await (await okOrThrow(fetchWithTimeout('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url), 7000))).text()),
-  ];
+    // proxy "grezzi" di riserva
+    allorigins: async (url) => parseXml(await (await okOrThrow(fetchWithTimeout('https://api.allorigins.win/raw?url=' + encodeURIComponent(url), 8000))).text()),
+    codetabs: async (url) => parseXml(await (await okOrThrow(fetchWithTimeout('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url), 8000))).text()),
+  };
   async function okOrThrow(p) { const r = await p; if (!r.ok) throw new Error('HTTP ' + r.status); return r; }
   function parseRss2jsonDate(s) {
     if (!s) return Date.now();
@@ -125,7 +129,7 @@
     if (doc.querySelector('parsererror')) throw new Error('XML non valido');
     const nodes = [...doc.querySelectorAll('item, entry')];
     if (!nodes.length) throw new Error('feed vuoto');
-    return nodes.slice(0, 20).map(n => {
+    return nodes.slice(0, 40).map(n => {
       const get = sel => n.getElementsByTagName(sel)[0];
       const linkEl = get('link');
       const link = linkEl ? (linkEl.getAttribute('href') || linkEl.textContent) : '';
@@ -143,9 +147,10 @@
 
   async function fetchSource(src) {
     let lastErr;
-    for (let i = 0; i < PROXIES.length; i++) {
+    const order = [...src.via, ...['allorigins', 'codetabs'].filter(p => !src.via.includes(p))];
+    for (const p of order) {
       try {
-        const items = await PROXIES[i](src.url);
+        const items = await PROXIES[p](src.url);
         if (items.length) return items;
       } catch (e) {
         lastErr = e;
@@ -187,7 +192,7 @@
     const seen = new Map();
     for (const list of Object.values(perSource)) {
       for (const it of list.items || []) {
-        if (!it.title || JUNK.test(it.title)) continue;
+        if (!it.title || JUNK.test(it.title) || (OFF_TOPIC.test(it.title) && !/roma|gialloross/i.test(it.title))) continue;
         const k = keyOf(it.title);
         if (seen.has(k)) {
           const prev = seen.get(k);
@@ -218,13 +223,16 @@
     const stale = SOURCES.filter(s => force || !state.perSource[s.id] || now - (state.perSource[s.id].ts || 0) > NEWS_TTL);
     renderSources();
 
-    // Richieste in fila, una alla volta: rss2json non ama le raffiche
-    let chain = Promise.resolve();
-    const tasks = stale.map((src, i) => (chain = chain.then(async () => {
-      if (i) await sleep(900);
+    // Una fila per intermediario: Jina in parallelo alla fila di rss2json, che va una richiesta alla volta
+    const chains = {};
+    const tasks = stale.map(src => {
+      const q = src.via[0];
+      const prev = chains[q] || Promise.resolve(null);
+      return (chains[q] = prev.then(async (wasFirst) => {
+      if (wasFirst !== null && q === 'rss2json') await sleep(1500);
       try {
         const raw = await fetchSource(src);
-        state.perSource[src.id] = { ts: Date.now(), ok: true, items: raw.slice(0, 15).map(r => normalize(r, src)) };
+        state.perSource[src.id] = { ts: Date.now(), ok: true, items: raw.slice(0, ITEMS_PER_SOURCE).map(r => normalize(r, src)) };
       } catch (e) {
         const prev = state.perSource[src.id];
         state.perSource[src.id] = { ...(prev || { items: [] }), ok: false, err: String(e.message || e) };
@@ -232,7 +240,11 @@
       store.set('news', state.perSource);
       rebuildNews();
       renderSources();
-    })));
+      const done = SOURCES.filter(x => state.perSource[x.id]?.ok).length;
+      if (state.news.length) $('#newsMeta').textContent = `${state.news.length} notizie da ${done} fonti · ne arrivano altre…`;
+      return true;
+    }));
+    });
     await Promise.allSettled(tasks);
     btn.classList.remove('is-spinning');
     const okCount = SOURCES.filter(s => state.perSource[s.id]?.ok).length;
@@ -339,7 +351,12 @@
     'ita.coppa_italia': 'Coppa Italia', 'ita.super_cup': 'Supercoppa', 'club.friendly': 'Amichevole',
   };
   const teamName = t => NAME_MAP[t.displayName] || NAME_MAP[t.shortDisplayName] || t.shortDisplayName || t.displayName || t.name || '?';
-  const teamLogo = t => t.logos?.[0]?.href || t.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${t.id}.png`;
+  // stemmi ridimensionati dal CDN di ESPN (l'originale è 500px)
+  const teamLogo = (t, size = 120) => {
+    const src = t.logos?.[0]?.href || t.logo || `https://a.espncdn.com/i/teamlogos/soccer/500/${t.id}.png`;
+    const m = /a\.espncdn\.com(\/i\/teamlogos\/[^?]+\.png)/.exec(src);
+    return m ? `https://a.espncdn.com/combiner/i?img=${m[1]}&w=${size}&h=${size}` : src;
+  };
 
   async function espn(path, cacheKey) {
     const cached = store.get(cacheKey);
@@ -361,7 +378,7 @@
     const side = ha => {
       const t = c.competitors?.find(x => x.homeAway === ha) || {};
       const score = t.score && typeof t.score === 'object' ? t.score.displayValue : t.score;
-      return { id: t.team?.id || t.id, name: teamName(t.team || {}), logo: teamLogo(t.team || { id: t.id }), score, winner: t.winner };
+      return { id: t.team?.id || t.id, name: teamName(t.team || {}), logo: teamLogo(t.team || { id: t.id }, 200), score, winner: t.winner };
     };
     const slug = e.league?.slug || e.season?.slug || '';
     const st = c.status?.type || e.status?.type || {};
@@ -476,7 +493,8 @@
       return `<span class="${r}" title="${esc(m.home.name)} ${esc(m.home.score)}-${esc(m.away.score)} ${esc(m.away.name)}" aria-label="${{ W: 'Vittoria', D: 'Pareggio', L: 'Sconfitta' }[r] || ''} contro ${esc(opp)}">${{ W: 'V', D: 'N', L: 'P' }[r] || '·'}</span>`;
     }).join('');
     const w = res.filter(r => r === 'W').length, d = res.filter(r => r === 'D').length, l = res.filter(r => r === 'L').length;
-    $('#formNote').textContent = off.length ? `Ultime ${off.length}: ${w} vittorie, ${d} pareggi, ${l} sconfitte` : '';
+    const pl = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    $('#formNote').textContent = off.length ? `Ultime ${off.length}: ${pl(w, 'vittoria', 'vittorie')}, ${pl(d, 'pareggio', 'pareggi')}, ${pl(l, 'sconfitta', 'sconfitte')}` : '';
   }
 
   let calMode = 'next';
@@ -510,12 +528,12 @@
         const st = Object.fromEntries((e.stats || []).map(s => [s.name, s]));
         const v = k => st[k]?.displayValue ?? st[k]?.value ?? '';
         return {
-          id: e.team.id, name: teamName(e.team), logo: teamLogo(e.team), rank: +(st.rank?.value ?? 0),
+          id: e.team.id, name: teamName(e.team), logo: teamLogo(e.team, 48), rank: +(st.rank?.value ?? 0),
           gp: v('gamesPlayed'), w: v('wins'), d: v('ties'), l: v('losses'), gd: v('pointDifferential'), pts: v('points'),
           zone: e.note?.color || '', zoneLabel: e.note?.description || '',
         };
       }).sort((a, b) => a.rank - b.rank);
-      tables[slug] = { name: group.name || '', season: data.children?.[0]?.name || '', entries };
+      tables[slug] = { name: group.name || '', season: (group.name || '').replace(/^(\d{4})-(\d{4}) Italian Serie A$/, 'Serie A $1/$2').replace('League Phase', 'Fase campionato'), entries };
       if (slug === 'ita.1') {
         teamNames = entries.map(e => e.name).filter(n => n !== 'Roma' && n.length > 2).map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         // ricategorizzo le notizie già caricate ora che conosco le squadre
@@ -562,11 +580,13 @@
     });
     html += '</tbody></table>';
     const zones = [...new Map(t.entries.filter(r => r.zone && r.zoneLabel).map(r => [r.zoneLabel, r.zone])).entries()];
-    const zoneIt = s => s.replace('Champions League', 'Champions League').replace('Europa League', 'Europa League').replace('Conference League Qualifiers', 'Preliminari Conference').replace('Relegation', 'Retrocessione').replace('Knockout Round Playoffs', 'Playoff').replace('Round of 16', 'Ottavi di finale');
-    if (zones.length) html += '<div class="legend">' + zones.map(([l, c]) => `<span><i style="background:${esc(c)}"></i>${esc(zoneIt(l))}</span>`).join('') + '</div>';
+    const ZONES = [[/conference league qualif/i, 'Preliminari Conference'], [/relegat/i, 'Retrocessione'], [/knockout.*play/i, 'Spareggi'], [/round of 16|last 16/i, 'Ottavi di finale'], [/eliminat/i, 'Eliminate'], [/qualif/i, 'Qualificazione']];
+    const zoneIt = s => (ZONES.find(([re]) => re.test(s)) || [null, s])[1];
+    const zonesIt = [...new Map(zones.map(([l, c]) => [zoneIt(l), c]).reverse()).entries()].reverse();
+    if (zonesIt.length) html += '<div class="legend">' + zonesIt.map(([l, c]) => `<span><i style="background:${esc(c)}"></i>${esc(l)}</span>`).join('') + '</div>';
     wrap.innerHTML = html;
     const roma = t.entries.find(r => r.id === ROMA_ID);
-    $('#tableFoot').textContent = (t.season || '') + (roma ? ` · Roma ${roma.rank}ª con ${roma.pts} punti` : '') + (compact ? ' · fase campionato' : '');
+    $('#tableFoot').textContent = (t.season || '') + (roma ? ` · Roma ${roma.rank}ª con ${roma.pts} punti` : '');
   }
 
   /* =======================================================

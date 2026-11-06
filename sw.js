@@ -45,16 +45,13 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // file dell'app: copia salvata subito, aggiornamento in background
+  // file dell'app: prima la rete (così gli aggiornamenti arrivano subito), offline la copia salvata
   if (url.origin === self.location.origin) {
     e.respondWith(
-      caches.match(req).then(hit => {
-        const net = fetch(req).then(res => {
-          if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req, copy)); }
-          return res;
-        }).catch(() => hit);
-        return hit || net;
-      })
+      fetch(req, { cache: 'no-cache' }).then(res => {
+        if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req, copy)); }
+        return res;
+      }).catch(() => caches.match(req, { ignoreSearch: true }))
     );
     return;
   }
