@@ -242,7 +242,6 @@
     $('#newsMeta').textContent = 'Aggiornamento in corso…';
     const now = Date.now();
     const stale = SOURCES.filter(s => force || !state.perSource[s.id] || now - (state.perSource[s.id].ts || 0) > NEWS_TTL);
-    renderSources();
 
     // Una fila per intermediario: Jina in parallelo alla fila di rss2json, che va una richiesta alla volta
     const chains = {};
@@ -260,8 +259,7 @@
       }
       store.set('news', state.perSource);
       rebuildNews();
-      renderSources();
-      const done = SOURCES.filter(x => state.perSource[x.id]?.ok).length;
+        const done = SOURCES.filter(x => state.perSource[x.id]?.ok).length;
       if (state.news.length) $('#newsMeta').textContent = `${state.news.length} notizie da ${done} fonti · ne arrivano altre…`;
       return true;
     }));
@@ -340,15 +338,6 @@
     el.style.animationDuration = Math.max(40, top.reduce((a, n) => a + n.title.length, 0) / 6) + 's';
   }
 
-  function renderSources() {
-    $('#sourcesList').innerHTML = SOURCES.map(s => {
-      const st = state.perSource[s.id];
-      const cls = !st ? '' : st.ok ? 'ok' : (st.items?.length ? 'cache' : 'err');
-      const title = !st ? 'in caricamento' : st.ok ? 'raggiungibile' : (st.items?.length ? 'non raggiungibile, mostro la copia salvata' : 'non raggiungibile');
-      return `<li><a href="${esc(s.site)}" target="_blank" rel="noopener noreferrer">${esc(s.name)}</a><span class="dot ${cls}" title="${title}" aria-label="${title}"></span></li>`;
-    }).join('') + `<li><a href="https://www.espn.com/soccer/team/_/id/104" target="_blank" rel="noopener noreferrer">ESPN · Partite e classifiche</a><span class="dot ${sportOk === null ? '' : sportOk ? 'ok' : 'err'}"></span></li>`;
-  }
-
   function markSeen() {
     // le notizie viste in questa visita non saranno "nuove" alla prossima
     const ids = state.news.slice(0, 200).map(n => n.id);
@@ -359,8 +348,8 @@
      PARTITE E CLASSIFICHE (ESPN)
      ======================================================= */
   const ESPN = 'https://site.api.espn.com/apis';
-  let sportOk = null;
   let liveTimer = null, countdownTimer = null, lastLiveFail = 0;
+  const endedMatches = new Map(); // partite che il tabellone dà per finite (il calendario ESPN può restare indietro di qualche minuto)
 
   const NAME_MAP = {
     'AS Roma': 'Roma', 'Internazionale': 'Inter', 'AC Milan': 'Milan', 'Hellas Verona': 'Verona', 'Paris Saint-Germain': 'PSG',
@@ -468,20 +457,26 @@
         espn('/site/v2/sports/soccer/all/teams/' + ROMA_ID + '/schedule?fixture=true', 'sched-next', ttl),
       ]);
       const byId = new Map();
-      [...(past.events || []), ...(next.events || [])].forEach(e => { const m = normEvent(e); byId.set(m.id, { ...byId.get(m.id), ...m }); });
+      // la stessa partita può stare in entrambi gli elenchi con stati diversi: vale il più avanzato (finita > in corso > da giocare)
+      const RANK = { pre: 0, in: 1, post: 2 };
+      [...(past.events || []), ...(next.events || [])].forEach(e => {
+        const m = normEvent(e), prev = byId.get(m.id);
+        byId.set(m.id, !prev ? m : (RANK[m.state] ?? 0) >= (RANK[prev.state] ?? 0) ? { ...prev, ...m } : { ...m, ...prev });
+      });
+      endedMatches.forEach((fin, id) => {
+        const x = byId.get(id);
+        if (x && x.state !== 'post') byId.set(id, { ...x, ...fin, state: 'post' });
+      });
       const all = [...byId.values()].sort((a, b) => a.date - b.date);
       matches.past = all.filter(m => m.state === 'post').reverse();
       matches.next = all.filter(m => m.state !== 'post');
-      sportOk = true;
       renderHero();
       renderFixtures();
       refreshTables(force);
     } catch (e) {
-      sportOk = false;
       $('#nextMatch .match-card__body').outerHTML = `<div class="match-card__body"><p>Calendario non disponibile al momento.</p></div>`;
       $('#lastMatch').innerHTML = '<h2 class="eyebrow">Ultimo risultato</h2><p class="mini-card__note">Non disponibile</p>';
     }
-    renderSources();
   }
 
   // partita in corso: chiedo solo il tabellone della competizione (leggero e aggiornato in pochi secondi)
@@ -496,7 +491,14 @@
       if (!e) throw new Error('partita non trovata');
       const u = normEvent(e);
       const nu = { ...m, ...u, slug: m.slug, comp: m.comp, tv: m.tv, venue: u.venue || m.venue };
-      if (nu.state === 'post') { loadMatches(true); return; }
+      if (nu.state === 'post') {
+        // fischio finale: la sposto subito tra i risultati e ricontrollo il calendario tra un paio di minuti
+        endedMatches.set(m.id, nu);
+        lastLiveFail = Date.now();
+        loadMatches(true);
+        setTimeout(() => loadMatches(true), 2 * 60 * 1000);
+        return;
+      }
       const before = romaScore(m), after = romaScore(nu);
       matches.next = matches.next.map(x => x.id === m.id ? nu : x);
       renderHero();
@@ -673,6 +675,79 @@
     if (slug === tableMode) renderTable();
   }
 
+  // tocco una squadra in classifica: partita in corso (risultato parziale) o prossimo incontro
+  let openTeam = null, teamTimer = null;
+  const teamCache = new Map(); // id squadra -> calendario
+  const boardCache = new Map(); // competizione -> tabellone del giorno
+  async function cachedJson(cache, key, ttl, url) {
+    const hit = cache.get(key);
+    if (hit && Date.now() - hit.ts < ttl) return hit.data;
+    const r = await fetchWithTimeout(url, 10000);
+    if (!r.ok) throw new Error('ESPN ' + r.status);
+    const data = await r.json();
+    cache.set(key, { ts: Date.now(), data });
+    return data;
+  }
+  async function teamNextMatch(id) {
+    const [sched, board] = await Promise.all([
+      cachedJson(teamCache, id, 10 * 60 * 1000, `${ESPN}/site/v2/sports/soccer/all/teams/${id}/schedule?fixture=true`),
+      cachedJson(boardCache, tableMode, 20 * 1000, `${ESPN}/site/v2/sports/soccer/${tableMode}/scoreboard`).catch(() => null),
+    ]);
+    const plays = e => e.competitions?.[0]?.competitors?.some(c => (c.team?.id || c.id) === id);
+    // in corso: il tabellone del giorno è il più aggiornato
+    const liveEv = (board?.events || []).find(e => plays(e) && e.competitions?.[0]?.status?.type?.state === 'in');
+    if (liveEv) return { ...normEvent(liveEv), slug: tableMode, comp: COMP_MAP[tableMode] || '' };
+    const list = (sched.events || []).map(normEvent).filter(m => m.state !== 'post').sort((a, b) => a.date - b.date);
+    const m = list[0];
+    if (m?.state === 'in' && m.slug && m.slug !== tableMode) { // in campo in un'altra competizione
+      const b = await cachedJson(boardCache, m.slug, 20 * 1000, `${ESPN}/site/v2/sports/soccer/${m.slug}/scoreboard`).catch(() => null);
+      const ev = (b?.events || []).find(e => e.id === m.id);
+      if (ev) return { ...m, ...normEvent(ev), slug: m.slug, comp: m.comp };
+    }
+    return m || null;
+  }
+  function teamNextHtml(id, m) {
+    if (!m) return '<p class="team-next__note">Nessuna partita in programma.</p>';
+    const name = t => `<span class="${t.id === id ? 'is-me' : ''}">${esc(t.name)}</span>`;
+    if (m.state === 'in') {
+      return `<div class="team-next__head"><span class="live-pill">LIVE ${esc(liveLabel(m))}</span><span>${esc(m.comp)}</span></div>
+        <div class="team-next__match">${name(m.home)} <b class="team-next__score">${esc(m.home.score ?? 0)} – ${esc(m.away.score ?? 0)}</b> ${name(m.away)}</div>`;
+    }
+    const where = m.home.id === id ? 'in casa' : 'in trasferta';
+    return `<div class="team-next__head"><span class="team-next__kicker">Prossima partita</span><span>${esc(m.comp)}</span></div>
+      <div class="team-next__match">${name(m.home)} <span class="team-next__vs">–</span> ${name(m.away)}</div>
+      <div class="team-next__when">${esc(cap(fmt.full.format(m.date)))} · ore ${esc(fmt.time.format(m.date))} · ${where}</div>`;
+  }
+  async function showTeamNext(id, quiet = false) {
+    clearTimeout(teamTimer);
+    const row = $(`#tableWrap tr[data-team="${CSS.escape(id)}"]`);
+    if (!row) return;
+    let det = row.nextElementSibling?.classList.contains('team-next') ? row.nextElementSibling : null;
+    if (!det) {
+      row.insertAdjacentHTML('afterend', '<tr class="team-next"><td colspan="8"><div class="team-next__box" aria-live="polite"></div></td></tr>');
+      det = row.nextElementSibling;
+    }
+    const box = det.querySelector('.team-next__box');
+    if (!quiet || !box.innerHTML) box.innerHTML = '<p class="team-next__note">Carico la prossima partita…</p>';
+    try {
+      const m = await teamNextMatch(id);
+      if (openTeam !== id || !box.isConnected) return;
+      box.innerHTML = teamNextHtml(id, m);
+      if (m?.state === 'in') teamTimer = setTimeout(() => { if (openTeam === id && !document.hidden) showTeamNext(id, true); }, 30000);
+    } catch (e) {
+      if (openTeam === id && box.isConnected) box.innerHTML = '<p class="team-next__note">Partita non disponibile al momento.</p>';
+    }
+  }
+  function toggleTeam(id) {
+    $$('#tableWrap tr.team-next').forEach(r => r.remove());
+    $$('#tableWrap tr[data-team]').forEach(r => r.setAttribute('aria-expanded', 'false'));
+    clearTimeout(teamTimer);
+    openTeam = openTeam === id ? null : id;
+    if (!openTeam) return;
+    $(`#tableWrap tr[data-team="${CSS.escape(id)}"]`)?.setAttribute('aria-expanded', 'true');
+    showTeamNext(id);
+  }
+
   function renderTable() {
     const t = tables[tableMode];
     const wrap = $('#tableWrap');
@@ -694,7 +769,7 @@
     rows.forEach(r => {
       if (!r) { if (!gap) html += '<tr class="gap"><td colspan="8">···</td></tr>'; gap = true; return; }
       gap = false;
-      html += `<tr class="${r.id === ROMA_ID ? 'is-roma' : ''}">
+      html += `<tr class="team-row${r.id === ROMA_ID ? ' is-roma' : ''}" data-team="${esc(r.id)}" tabindex="0" aria-expanded="${r.id === openTeam}" aria-label="${esc(r.name)}: prossima partita">
         <td class="pos" style="--zone:${esc(r.zone || 'transparent')}">${r.rank}</td>
         <td class="team-cell"><div><img src="${esc(r.logo)}" alt="" loading="lazy"><span>${esc(r.name)}</span></div></td>
         <td>${esc(r.gp)}</td><td>${esc(r.w)}</td><td>${esc(r.d)}</td><td>${esc(r.l)}</td><td>${esc(r.gd)}</td><td class="pts">${esc(r.pts)}</td></tr>`;
@@ -706,6 +781,7 @@
     const zonesIt = [...new Map(zones.map(([l, c]) => [zoneIt(l), c]).reverse()).entries()].reverse();
     if (zonesIt.length) html += '<div class="legend">' + zonesIt.map(([l, c]) => `<span><i style="background:${esc(c)}"></i>${esc(l)}</span>`).join('') + '</div>';
     wrap.innerHTML = html;
+    if (openTeam) showTeamNext(openTeam, true);
     const roma = t.entries.find(r => r.id === ROMA_ID);
     $('#tableFoot').textContent = (t.season || '') + (roma ? ` · Roma ${roma.rank}ª con ${roma.pts} punti` : '');
   }
@@ -723,7 +799,13 @@
     $('#moreBtn').addEventListener('click', () => { state.shown += PAGE_SIZE; renderNews(); });
     $('#refreshBtn').addEventListener('click', () => { loadNews(true); refreshTables(true); loadMatches(); });
 
+    $('#tableWrap').addEventListener('click', e => { const r = e.target.closest('tr[data-team]'); if (r) toggleTeam(r.dataset.team); });
+    $('#tableWrap').addEventListener('keydown', e => {
+      const r = e.target.closest('tr[data-team]');
+      if (r && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleTeam(r.dataset.team); }
+    });
     $$('[data-table]').forEach(b => b.addEventListener('click', () => {
+      openTeam = null; clearTimeout(teamTimer);
       tableMode = b.dataset.table;
       $$('[data-table]').forEach(x => { const on = x === b; x.classList.toggle('is-active', on); x.setAttribute('aria-selected', on); });
       renderTable();
@@ -817,7 +899,6 @@
   // ---------- avvio ----------
   bindUI();
   if (Object.keys(state.perSource).length) rebuildNews(); // mostro subito quello che ho salvato
-  renderSources();
   loadMatches();
   loadTable('ita.1');
   loadNews(false).then(() => { if (state.firstVisit) markSeen(); });
