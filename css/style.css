@@ -65,7 +65,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; min-width: 0; }
-.brand__emblem { width: 44px; height: 44px; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .45)); flex: none; }
+.brand__emblem { width: auto; height: 52px; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .45)); flex: none; }
 .brand__text { display: flex; flex-direction: column; line-height: .95; min-width: 0; }
 .brand__kicker { font: 600 13px/1 var(--cond); letter-spacing: .32em; text-transform: uppercase; color: var(--gold-soft); }
 .brand__name { font: 400 clamp(22px, 5.4vw, 30px)/1 var(--display); text-transform: uppercase; letter-spacing: .02em; color: var(--cream); white-space: nowrap; }
