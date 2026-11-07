@@ -404,6 +404,24 @@
       return { team: d.team?.id, min: d.clock?.displayValue || '', who: a.shortName || a.displayName || '', og: !!d.ownGoal, pen: !!d.penaltyKick };
     });
   }
+  // marcatori di una partita finita: il calendario non li ha, li prendo dal tabellone di quel giorno
+  // (una volta trovati li salvo sul dispositivo: una partita finita non cambia più)
+  async function loadGoals(m) {
+    if (m.goals) return m.goals;
+    const saved = store.get('goals-' + m.id);
+    if (Array.isArray(saved)) return (m.goals = saved);
+    if (!m.slug) return null;
+    const ymd = t => new Date(t).toISOString().slice(0, 10).replace(/-/g, '');
+    for (const t of [m.date, m.date - 864e5]) { // ESPN ragiona sull'ora americana: provo anche il giorno prima
+      try {
+        const r = await fetchWithTimeout(`${ESPN}/site/v2/sports/soccer/${m.slug}/scoreboard?dates=${ymd(t)}`, 10000);
+        if (!r.ok) continue;
+        const det = ((await r.json()).events || []).find(x => x.id === m.id)?.competitions?.[0]?.details;
+        if (Array.isArray(det)) { m.goals = goalsOf(det); store.set('goals-' + m.id, m.goals); return m.goals; }
+      } catch (e) { /* senza marcatori la scheda resta com'è */ }
+    }
+    return null;
+  }
   const goalLabel = g => `${g.who || 'Gol'}${g.og ? ' (aut.)' : g.pen ? ' (rig.)' : ''}`;
 
   function normEvent(e) {
@@ -457,6 +475,7 @@
       sportOk = true;
       renderHero();
       renderFixtures();
+      refreshTables(force);
     } catch (e) {
       sportOk = false;
       $('#nextMatch .match-card__body').outerHTML = `<div class="match-card__body"><p>Calendario non disponibile al momento.</p></div>`;
@@ -497,6 +516,9 @@
     cal: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
     tv: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 21h8M9 2l3 4 3-4"/></svg>',
   };
+  // versione compatta (ultimo risultato): un solo elenco in ordine di tempo, gol della Roma evidenziati
+  const scorersMini = m => `<ul class="scorers-mini" aria-label="Marcatori">${(m.goals || [])
+    .map(g => `<li${g.team === ROMA_ID ? ' class="is-roma"' : ''}><span class="scorers__min">${esc(g.min)}</span> ${esc(goalLabel(g))}</li>`).join('')}</ul>`;
   const scorers = m => {
     const list = t => `<ul class="scorers__list${t.id === ROMA_ID ? ' is-roma' : ''}">${(m.goals || []).filter(g => g.team === t.id)
       .map(g => `<li><span class="scorers__min">${esc(g.min)}</span> ${esc(goalLabel(g))}</li>`).join('')}</ul>`;
@@ -558,7 +580,12 @@
           <div class="last__score">${esc(last.home.score)} – ${esc(last.away.score)}</div>
           <div class="last__team"><img src="${esc(last.away.logo)}" alt="" loading="lazy"><span>${esc(last.away.name)}</span></div>
         </div>
+        ${last.goals?.length ? scorersMini(last) : ''}
         <p class="last__sub">${esc(last.comp)} · ${esc(fmt.short.format(last.date))}${label ? `<br><span class="result-tag ${o}">${label}</span>` : ''}</p>`;
+      if (!last.goals) loadGoals(last).then(g => {
+        const box = $('#lastMatch .last');
+        if (g?.length && box && matches.past.includes(last) && !$('#lastMatch .scorers-mini')) box.insertAdjacentHTML('afterend', scorersMini(last));
+      });
     }
 
     // forma: ultime 5 ufficiali
@@ -597,9 +624,25 @@
 
   let tableMode = 'ita.1';
   const tables = {};
-  async function loadTable(slug) {
+  const tableLoading = {};
+  // classifica: durante la partita e nelle ore dopo la ricontrollo ogni minuto (ESPN la aggiorna qualche minuto dopo il fischio finale)
+  const TABLE_TTL_HOT = 60 * 1000;
+  const tableTtl = () => {
+    const recent = matches.past[0] && Date.now() - matches.past[0].date < 5 * 36e5;
+    return matches.next.some(m => m.state === 'in') || recent ? TABLE_TTL_HOT : SPORT_TTL;
+  };
+  function refreshTables(force = false) {
+    new Set(['ita.1', tableMode, ...Object.keys(tables)]).forEach(slug => loadTable(slug, force ? 0 : tableTtl()));
+  }
+  function loadTable(slug, ttl = tableTtl()) {
+    if (!tableLoading[slug]) tableLoading[slug] = fetchTable(slug, ttl).finally(() => { delete tableLoading[slug]; });
+    return tableLoading[slug];
+  }
+  async function fetchTable(slug, ttl) {
     try {
-      const data = await espn('/v2/sports/soccer/' + slug + '/standings', 'table-' + slug);
+      const data = await espn('/v2/sports/soccer/' + slug + '/standings', 'table-' + slug, ttl);
+      const ts = store.get('table-' + slug)?.ts;
+      if (ts && tables[slug]?.ts === ts) return; // niente di nuovo: non ridisegno
       const group = data.children?.[0] || {};
       const entries = (group.standings?.entries || []).map(e => {
         const st = Object.fromEntries((e.stats || []).map(s => [s.name, s]));
@@ -610,7 +653,7 @@
           zone: e.note?.color || '', zoneLabel: e.note?.description || '',
         };
       }).sort((a, b) => a.rank - b.rank);
-      tables[slug] = { name: group.name || '', season: (group.name || '').replace(/^(\d{4})-(\d{4}) Italian Serie A$/, 'Serie A $1/$2').replace('League Phase', 'Fase campionato'), entries };
+      tables[slug] = { ts, name: group.name || '', season: (group.name || '').replace(/^(\d{4})-(\d{4}) Italian Serie A$/, 'Serie A $1/$2').replace('League Phase', 'Fase campionato'), entries };
       if (slug === 'ita.1') {
         teamNames = entries.map(e => e.name).filter(n => n !== 'Roma' && n.length > 2).map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         // ricategorizzo le notizie già caricate ora che conosco le squadre
@@ -624,6 +667,7 @@
         rebuildNews();
       }
     } catch (e) {
+      if (tables[slug]?.entries) return; // tengo l'ultima classifica buona
       tables[slug] = { error: true };
     }
     if (slug === tableMode) renderTable();
@@ -677,7 +721,7 @@
       renderNews();
     });
     $('#moreBtn').addEventListener('click', () => { state.shown += PAGE_SIZE; renderNews(); });
-    $('#refreshBtn').addEventListener('click', () => { loadNews(true); loadMatches(); });
+    $('#refreshBtn').addEventListener('click', () => { loadNews(true); refreshTables(true); loadMatches(); });
 
     $$('[data-table]').forEach(b => b.addEventListener('click', () => {
       tableMode = b.dataset.table;
@@ -750,6 +794,9 @@
 
     // anteprima dell'animazione del gol: aggiungi ?provagol all'indirizzo
     if (new URLSearchParams(location.search).has('provagol')) setTimeout(() => celebrateGoal(2, 'R. Mora', "58'"), 1200);
+
+    // classifica: controllo periodico (scarica davvero solo quando la copia salvata è scaduta)
+    setInterval(() => { if (!document.hidden) refreshTables(); }, 60000);
 
     // aggiorno i "x min fa" ogni minuto
     setInterval(() => $$('.card__time').forEach(t => { t.textContent = ago(Date.parse(t.getAttribute('datetime'))); }), 60000);

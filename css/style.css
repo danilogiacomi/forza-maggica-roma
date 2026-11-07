@@ -165,6 +165,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .scorers__list li { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
 .scorers__list.is-roma { color: var(--gold-soft); }
 .scorers__min { min-width: 2.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.scorers-mini { list-style: none; margin: 12px auto 0; padding: 0; display: grid; gap: 3px; width: fit-content; max-width: 100%;
+  font: 600 14px/1.2 var(--cond); letter-spacing: .02em; color: var(--cream); }
+.scorers-mini li { display: grid; grid-template-columns: auto 1fr; gap: 6px; }
+.scorers-mini li.is-roma { color: var(--gold-soft); }
 .live-pill { font: 700 12px/1 var(--cond); letter-spacing: .16em; padding: 5px 9px; border-radius: 999px; background: var(--red-bright); color: #fff; animation: blink 1.4s infinite; }
 @keyframes blink { 50% { opacity: .55; } }
 
