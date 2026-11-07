@@ -300,8 +300,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .fx__comp { font: 600 11px/1 var(--cond); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
 .fx__comp.is-cup { color: var(--gold); }
 .fx__right { text-align: right; font: 600 14px/1.2 var(--cond); }
-.fx__score { display: grid; gap: 4px; font: 400 18px/18px var(--display); }
-.fx__res { margin-top: 4px; }
+.fx__goals { margin-left: auto; padding-left: 8px; flex: none; font: 400 18px/18px var(--display); color: var(--cream); }
+.fx__right .result-tag { margin-top: 0; }
 
 .sources { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font: 500 15px/1.3 var(--cond); letter-spacing: .02em; }
 .sources li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

@@ -538,17 +538,19 @@
     if (!list.length) { $('#fixtures').innerHTML = '<li class="mini-card__note">Nessuna partita.</li>'; return; }
     $('#fixtures').innerHTML = list.map(m => {
       const o = calMode === 'past' ? outcome(m) : '';
-      const right = calMode === 'past'
-        ? `<div class="fx__score"><span>${esc(m.home.score)}</span><span>${esc(m.away.score)}</span></div>`
+      const past = calMode === 'past';
+      const goals = side => past ? `<b class="fx__goals">${esc(side.score)}</b>` : '';
+      const right = past
+        ? (o ? `<span class="result-tag ${o}">${{ W: 'V', D: 'N', L: 'P' }[o]}</span>` : '')
         : `<div>${esc(fmt.time.format(m.date))}</div>`;
       return `<li class="fx">
         <div class="fx__date">${esc(fmt.wd.format(m.date))}<b>${esc(fmt.day.format(m.date))}</b>${esc(fmt.mon.format(m.date).replace('.', ''))}</div>
         <div class="fx__teams">
           <span class="fx__comp${isCup(m) ? ' is-cup' : ''}">${esc(m.comp)}${m.state === 'in' ? ' · LIVE' : ''}</span>
-          <div class="fx__team${m.home.id === ROMA_ID ? ' is-roma' : ''}"><img src="${esc(m.home.logo)}" alt="" loading="lazy"><span>${esc(m.home.name)}</span></div>
-          <div class="fx__team${m.away.id === ROMA_ID ? ' is-roma' : ''}"><img src="${esc(m.away.logo)}" alt="" loading="lazy"><span>${esc(m.away.name)}</span></div>
+          <div class="fx__team${m.home.id === ROMA_ID ? ' is-roma' : ''}"><img src="${esc(m.home.logo)}" alt="" loading="lazy"><span>${esc(m.home.name)}</span>${goals(m.home)}</div>
+          <div class="fx__team${m.away.id === ROMA_ID ? ' is-roma' : ''}"><img src="${esc(m.away.logo)}" alt="" loading="lazy"><span>${esc(m.away.name)}</span>${goals(m.away)}</div>
         </div>
-        <div class="fx__right">${right}${o ? `<div class="fx__res"><span class="result-tag ${o}">${{ W: 'V', D: 'N', L: 'P' }[o]}</span></div>` : ''}</div>
+        <div class="fx__right">${right}</div>
       </li>`;
     }).join('');
   }
