@@ -358,11 +358,14 @@
     return m ? `https://a.espncdn.com/combiner/i?img=${m[1]}&w=${size}&h=${size}` : src;
   };
 
-  async function espn(path, cacheKey) {
+  const SCHED_TTL = 30 * 1000;   // calendario e risultati: copia salvata valida solo 30 secondi
+  const LIVE_EVERY = 15 * 1000;  // durante la partita: punteggio ogni 15 secondi
+
+  async function espn(path, cacheKey, ttl = SPORT_TTL) {
     const cached = store.get(cacheKey);
-    if (cached && Date.now() - cached.ts < SPORT_TTL && !path.includes('live=1')) return cached.data;
+    if (cached && Date.now() - cached.ts < ttl) return cached.data;
     try {
-      const r = await fetchWithTimeout(ESPN + path.replace('&live=1', ''), 12000);
+      const r = await fetchWithTimeout(ESPN + path, 12000);
       if (!r.ok) throw new Error('ESPN ' + r.status);
       const data = await r.json();
       store.set(cacheKey, { ts: Date.now(), data });
@@ -384,9 +387,18 @@
     const st = c.status?.type || e.status?.type || {};
     return {
       id: e.id, date: Date.parse(e.date), slug, comp: COMP_MAP[slug] || (e.league?.name || '').replace(/^Italian /, '').replace(/^UEFA /, ''),
-      home: side('home'), away: side('away'), state: st.state || 'pre', detail: st.shortDetail || st.detail || '',
+      home: side('home'), away: side('away'), state: st.state || 'pre', status: st.name || '', detail: st.shortDetail || st.detail || '',
       clock: c.status?.displayClock || '', venue: c.venue?.fullName || '', tv: (c.broadcasts || []).flatMap(b => b.names || [b.media?.shortName]).filter(Boolean),
     };
+  }
+  // cosa scrivere nel bollino LIVE: ESPN all'intervallo lascia il minuto fermo a 45'+x
+  function liveLabel(m) {
+    const n = m.status || '';
+    if (/HALFTIME/.test(n)) return 'Intervallo';
+    if (/END_OF_REGULATION/.test(n)) return 'Fine 90\'';
+    if (/END_OF_EXTRA/.test(n)) return 'Fine supplementari';
+    if (/SHOOTOUT|PENALT/.test(n)) return 'Rigori';
+    return m.clock || m.detail;
   }
   const isCup = m => m.slug && m.slug !== 'ita.1' && m.slug !== 'club.friendly';
   function outcome(m) {
@@ -399,12 +411,12 @@
 
   let matches = { past: [], next: [] };
 
-  async function loadMatches(live = false) {
+  async function loadMatches(force = false) {
     try {
-      const sfx = live ? '&live=1' : '';
+      const ttl = force ? 0 : SCHED_TTL;
       const [past, next] = await Promise.all([
-        espn('/site/v2/sports/soccer/all/teams/' + ROMA_ID + '/schedule?x=1' + sfx, 'sched-past'),
-        espn('/site/v2/sports/soccer/all/teams/' + ROMA_ID + '/schedule?fixture=true' + sfx, 'sched-next'),
+        espn('/site/v2/sports/soccer/all/teams/' + ROMA_ID + '/schedule', 'sched-past', ttl),
+        espn('/site/v2/sports/soccer/all/teams/' + ROMA_ID + '/schedule?fixture=true', 'sched-next', ttl),
       ]);
       const byId = new Map();
       [...(past.events || []), ...(next.events || [])].forEach(e => { const m = normEvent(e); byId.set(m.id, { ...byId.get(m.id), ...m }); });
@@ -420,6 +432,29 @@
       $('#lastMatch').innerHTML = '<h2 class="eyebrow">Ultimo risultato</h2><p class="mini-card__note">Non disponibile</p>';
     }
     renderSources();
+  }
+
+  // partita in corso: chiedo solo il tabellone della competizione (leggero e aggiornato in pochi secondi)
+  const romaScore = m => parseInt((m.home.id === ROMA_ID ? m.home : m.away).score, 10) || 0;
+  async function pollLive(m) {
+    if (document.hidden) { liveTimer = setTimeout(() => pollLive(m), LIVE_EVERY); return; }
+    try {
+      if (!m.slug) throw new Error('competizione sconosciuta');
+      const r = await fetchWithTimeout(`${ESPN}/site/v2/sports/soccer/${m.slug}/scoreboard`, 10000);
+      if (!r.ok) throw new Error('ESPN ' + r.status);
+      const e = ((await r.json()).events || []).find(x => x.id === m.id);
+      if (!e) throw new Error('partita non trovata');
+      const u = normEvent(e);
+      const nu = { ...m, ...u, slug: m.slug, comp: m.comp, tv: m.tv, venue: u.venue || m.venue };
+      if (nu.state === 'post') { loadMatches(true); return; }
+      const before = romaScore(m), after = romaScore(nu);
+      matches.next = matches.next.map(x => x.id === m.id ? nu : x);
+      renderHero();
+      renderFixtures();
+      if (after > before) toast(`GOOOOL! Roma ${after} 💛❤️`, 6000);
+    } catch (err) {
+      loadMatches(true);
+    }
   }
 
   const icon = {
@@ -439,7 +474,7 @@
     } else {
       const when = cap(fmt.full.format(nm.date)) + ' · ore ' + fmt.time.format(nm.date);
       const mid = live
-        ? `<div class="versus__mid"><span class="live-pill">LIVE ${esc(nm.clock || nm.detail)}</span><span class="versus__score">${esc(nm.home.score ?? 0)} – ${esc(nm.away.score ?? 0)}</span></div>`
+        ? `<div class="versus__mid"><span class="live-pill">LIVE ${esc(liveLabel(nm))}</span><span class="versus__score">${esc(nm.home.score ?? 0)} – ${esc(nm.away.score ?? 0)}</span></div>`
         : `<div class="versus__mid"><span class="versus__vs">VS</span></div>`;
       box.innerHTML = `
         <h2 class="eyebrow" id="heroTitle">${live ? 'In campo adesso' : 'Prossima partita'}</h2>
@@ -452,13 +487,13 @@
           ${nm.tv.length ? `<span>${icon.tv}${esc(nm.tv.slice(0, 2).join(', '))}</span>` : ''}
         </div>`;
       if (live) {
-        liveTimer = setTimeout(() => loadMatches(true), 60 * 1000);
+        liveTimer = setTimeout(() => pollLive(live), LIVE_EVERY);
       } else {
         const tick = () => {
           const el = $('#countdown');
           if (!el) return;
           let d = Math.max(0, nm.date - Date.now());
-          if (d === 0) { el.innerHTML = '<div style="grid-column:1/-1"><b>Si gioca!</b></div>'; clearInterval(countdownTimer); liveTimer = setTimeout(() => loadMatches(true), 60 * 1000); return; }
+          if (d === 0) { el.innerHTML = '<div style="grid-column:1/-1"><b>Si gioca!</b></div>'; clearInterval(countdownTimer); liveTimer = setTimeout(() => loadMatches(true), LIVE_EVERY); return; }
           const days = Math.floor(d / 864e5); d -= days * 864e5;
           const h = Math.floor(d / 36e5); d -= h * 36e5;
           const m = Math.floor(d / 6e4); d -= m * 6e4;
