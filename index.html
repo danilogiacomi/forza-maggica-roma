@@ -20,7 +20,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=2">
+  <link rel="stylesheet" href="css/style.css?v=3">
 </head>
 <body>
   <a class="skip" href="#notizie">Vai alle notizie</a>
@@ -145,11 +145,11 @@
 
   <div class="toast" id="toast" role="status" hidden></div>
 
-  <div class="ios-hint" id="iosHint" hidden>
-    <p>Per installare l'app: tocca <strong>Condividi</strong> <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4l4 4M6 11v9h12v-9"/></svg> e poi <strong>Aggiungi alla schermata Home</strong>.</p>
+  <div class="ios-hint" id="iosHint" role="dialog" aria-label="Come installare l'app" hidden>
+    <p id="installHintText"></p>
     <button class="btn btn--icon" id="iosHintClose" aria-label="Chiudi">✕</button>
   </div>
 
-  <script src="js/app.js?v=2" defer></script>
+  <script src="js/app.js?v=3" defer></script>
 </body>
 </html>

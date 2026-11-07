@@ -2,7 +2,7 @@
    - guscio dell'app in cache: si apre anche offline
    - font e immagini: cache con aggiornamento in background
    - notizie e partite: le gestisce l'app (con copia salvata sul dispositivo) */
-const VERSION = 'fmr-v2';
+const VERSION = 'fmr-v3';
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const SHELL_FILES = [

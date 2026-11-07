@@ -623,23 +623,44 @@
     ['partite', 'notizie', 'classifica', 'calendario'].forEach(id => { const el = document.getElementById(id); if (el) io.observe(el); });
 
     // installazione PWA
-    let deferred;
-    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('#installBtn').hidden = false; });
-    $('#installBtn').addEventListener('click', async () => {
-      if (!deferred) return;
-      deferred.prompt();
-      const { outcome } = await deferred.userChoice;
-      deferred = null; $('#installBtn').hidden = true;
-      if (outcome === 'accepted') toast('Forza Maggica Roma è sul tuo telefono!');
-    });
-    window.addEventListener('appinstalled', () => { $('#installBtn').hidden = true; });
+    // Il tasto "Installa" c'è sempre finché l'app non è installata:
+    // - Chrome/Edge/Samsung (Android e desktop): apre la finestra di installazione del browser
+    // - Safari iPhone/iPad, Safari Mac, Firefox…: mostra le istruzioni giuste per quel dispositivo
+    let deferred = null;
+    const ua = navigator.userAgent;
+    const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /android/i.test(ua);
+    const isFirefox = /firefox|fxios/i.test(ua);
+    const isSafariMac = !isIOS && /safari/i.test(ua) && !/chrome|chromium|crios|edg|opr|firefox/i.test(ua) && /macintosh/i.test(ua);
+    const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    const shareIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m0 0L8 7m4-4l4 4M6 11v9h12v-9"/></svg>';
+    const installBtn = $('#installBtn');
+    const hint = $('#iosHint');
 
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
-    const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-    if (isIOS && !standalone && !store.get('iosHintClosed')) {
-      setTimeout(() => { $('#iosHint').hidden = false; }, 4000);
-      $('#iosHintClose').addEventListener('click', () => { $('#iosHint').hidden = true; store.set('iosHintClosed', true); });
+    function installHelp() {
+      if (isIOS) return `Per installare l'app: tocca <strong>Condividi</strong> ${shareIcon} in basso (o in alto su iPad), poi <strong>Aggiungi alla schermata Home</strong>.`;
+      if (isAndroid && isFirefox) return 'Per installare l\'app: apri il menu <strong>⋮</strong> di Firefox e scegli <strong>Installa</strong> (o <strong>Aggiungi alla schermata Home</strong>).';
+      if (isAndroid) return 'Per installare l\'app: apri il menu <strong>⋮</strong> del browser e scegli <strong>Installa app</strong> o <strong>Aggiungi a schermata Home</strong>.';
+      if (isSafariMac) return 'Per installare l\'app sul Mac: menu <strong>File</strong> → <strong>Aggiungi al Dock</strong>.';
+      if (isFirefox) return 'Firefox per computer non installa le app web: apri il sito con <strong>Chrome</strong>, <strong>Edge</strong> o <strong>Safari</strong>, oppure dal telefono.';
+      return 'Per installare l\'app: clicca l\'icona di installazione nella barra degli indirizzi, oppure menu <strong>⋮</strong> → <strong>Trasmetti, salva e condividi</strong> → <strong>Installa pagina come app</strong>.';
     }
+    function showHelp() { $('#installHintText').innerHTML = installHelp(); hint.hidden = false; }
+
+    installBtn.hidden = isStandalone();
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; installBtn.hidden = false; });
+    installBtn.addEventListener('click', async () => {
+      if (!deferred) { showHelp(); return; }
+      const ev = deferred; deferred = null; // il prompt del browser si può usare una volta sola
+      ev.prompt();
+      const { outcome: choice } = await ev.userChoice;
+      if (choice === 'accepted') { installBtn.hidden = true; toast('Forza Maggica Roma è installata. Daje!'); }
+    });
+    window.addEventListener('appinstalled', () => { installBtn.hidden = true; hint.hidden = true; });
+    $('#iosHintClose').addEventListener('click', () => { hint.hidden = true; store.set('iosHintClosed', true); });
+
+    // su iPhone non esiste un prompt automatico: mostro il suggerimento una volta, dopo qualche secondo
+    if (isIOS && !isStandalone() && !store.get('iosHintClosed')) setTimeout(showHelp, 4000);
 
     // quando l'utente torna sull'app, aggiorno se i dati sono vecchi
     document.addEventListener('visibilitychange', () => {
