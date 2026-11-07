@@ -90,6 +90,27 @@
     toastTimer = setTimeout(() => { el.hidden = true; }, ms);
   }
 
+  // gol della Roma: schermo che lampeggia giallorosso, scritta enorme, coriandoli, vibrazione
+  function celebrateGoal(score, scorer) {
+    $('.goal')?.remove();
+    try { navigator.vibrate?.([250, 90, 250, 90, 500]); } catch (e) { /* non supportato */ }
+    const bits = Array.from({ length: 70 }, (_, i) => {
+      const c = ['var(--gold)', 'var(--red-bright)', 'var(--cream)'][i % 3];
+      return `<i style="--x:${(Math.random() * 100).toFixed(1)}vw;--d:${(Math.random() * 1.2).toFixed(2)}s;--t:${(2.2 + Math.random() * 1.8).toFixed(2)}s;--r:${Math.round(Math.random() * 720 - 360)}deg;--s:${(6 + Math.random() * 8).toFixed(0)}px;background:${c}"></i>`;
+    }).join('');
+    const el = document.createElement('div');
+    el.className = 'goal';
+    el.setAttribute('role', 'alert');
+    el.innerHTML = `<div class="goal__flash"></div><div class="goal__rays"></div><div class="goal__confetti" aria-hidden="true">${bits}</div>
+      <div class="goal__text"><span class="goal__word">GOOOL!</span><span class="goal__sub">Roma ${esc(score)}${scorer ? ' · ' + esc(scorer) : ''}</span><span class="goal__cry">Daje Roma daje!</span></div>`;
+    const close = () => { el.classList.add('is-out'); setTimeout(() => el.remove(), 400); };
+    el.addEventListener('click', close);
+    document.body.appendChild(el);
+    setTimeout(close, 5200);
+    const card = $('#nextMatch');
+    if (card) { card.classList.remove('is-goal'); void card.offsetWidth; card.classList.add('is-goal'); setTimeout(() => card.classList.remove('is-goal'), 8000); }
+  }
+
   /* =======================================================
      NOTIZIE
      ======================================================= */
@@ -451,7 +472,7 @@
       matches.next = matches.next.map(x => x.id === m.id ? nu : x);
       renderHero();
       renderFixtures();
-      if (after > before) toast(`GOOOOL! Roma ${after} 💛❤️`, 6000);
+      if (after > before) celebrateGoal(after);
     } catch (err) {
       loadMatches(true);
     }
@@ -540,17 +561,15 @@
       const o = calMode === 'past' ? outcome(m) : '';
       const past = calMode === 'past';
       const goals = side => past ? `<b class="fx__goals">${esc(side.score)}</b>` : '';
-      const right = past
-        ? (o ? `<span class="result-tag ${o}">${{ W: 'V', D: 'N', L: 'P' }[o]}</span>` : '')
-        : `<div>${esc(fmt.time.format(m.date))}</div>`;
-      return `<li class="fx">
+      const tag = past && o ? `<span class="result-tag ${o}">${{ W: 'V', D: 'N', L: 'P' }[o]}</span>` : '';
+      return `<li class="fx${past ? ' fx--past' : ''}">
         <div class="fx__date">${esc(fmt.wd.format(m.date))}<b>${esc(fmt.day.format(m.date))}</b>${esc(fmt.mon.format(m.date).replace('.', ''))}</div>
         <div class="fx__teams">
           <span class="fx__comp${isCup(m) ? ' is-cup' : ''}">${esc(m.comp)}${m.state === 'in' ? ' · LIVE' : ''}</span>
           <div class="fx__team${m.home.id === ROMA_ID ? ' is-roma' : ''}"><img src="${esc(m.home.logo)}" alt="" loading="lazy"><span>${esc(m.home.name)}</span>${goals(m.home)}</div>
-          <div class="fx__team${m.away.id === ROMA_ID ? ' is-roma' : ''}"><img src="${esc(m.away.logo)}" alt="" loading="lazy"><span>${esc(m.away.name)}</span>${goals(m.away)}</div>
-        </div>
-        <div class="fx__right">${right}</div>
+          <div class="fx__team${m.away.id === ROMA_ID ? ' is-roma' : ''}"><img src="${esc(m.away.logo)}" alt="" loading="lazy"><span>${esc(m.away.name)}</span>${goals(m.away)}</div>${tag}
+        </div>${past ? '' : `
+        <div class="fx__right">${esc(fmt.time.format(m.date))}</div>`}
       </li>`;
     }).join('');
   }
@@ -707,6 +726,9 @@
     window.addEventListener('pagehide', markSeen);
     window.addEventListener('online', () => { toast('Di nuovo online'); loadNews(false); loadMatches(); });
     window.addEventListener('offline', () => toast('Sei offline: mostro le ultime notizie salvate', 3500));
+
+    // anteprima dell'animazione del gol: aggiungi ?provagol all'indirizzo
+    if (new URLSearchParams(location.search).has('provagol')) setTimeout(() => celebrateGoal(2), 1200);
 
     // aggiorno i "x min fa" ogni minuto
     setInterval(() => $$('.card__time').forEach(t => { t.textContent = ago(Date.parse(t.getAttribute('datetime'))); }), 60000);

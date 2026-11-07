@@ -301,7 +301,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .fx__comp.is-cup { color: var(--gold); }
 .fx__right { text-align: right; font: 600 14px/1.2 var(--cond); }
 .fx__goals { margin-left: auto; padding-left: 8px; flex: none; font: 400 18px/18px var(--display); color: var(--cream); }
-.fx__right .result-tag { margin-top: 0; }
+.fx--past { grid-template-columns: 58px 1fr; }
+.fx--past .fx__teams { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.fx--past .fx__comp { grid-column: 1 / -1; }
+.fx--past .fx__team { grid-column: 1; }
+.fx--past .result-tag { grid-column: 2; grid-row: 2 / 4; align-self: center; margin: 0; }
 
 .sources { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font: 500 15px/1.3 var(--cond); letter-spacing: .02em; }
 .sources li { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -375,6 +379,38 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .btn--ghost { padding: 11px; }
   .hero__side { grid-template-columns: 1fr; }
 }
+/* ---------- Gol della Roma ---------- */
+.goal { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; overflow: hidden; cursor: pointer; background: rgba(26, 4, 10, .92); animation: goal-in .15s ease both; }
+.goal.is-out { animation: goal-out .4s ease forwards; }
+.goal__flash { position: absolute; inset: 0; animation: goal-flash .5s steps(1, end) 6, goal-fade .6s ease 3s forwards; }
+.goal__rays { position: absolute; left: 50%; top: 50%; width: 220vmax; height: 220vmax; margin: -110vmax 0 0 -110vmax; opacity: .22;
+  background: repeating-conic-gradient(from 0deg, var(--gold) 0 10deg, transparent 10deg 20deg); animation: goal-spin 9s linear infinite; }
+.goal__text { position: relative; display: grid; justify-items: center; gap: 10px; text-align: center; padding: 0 16px; }
+.goal__word { font: 400 clamp(64px, 19vw, 220px)/.9 var(--display); color: var(--cream); letter-spacing: .02em;
+  -webkit-text-stroke: 3px #2a0610; text-shadow: 0 6px 0 #2a0610, 0 0 40px rgba(244, 178, 35, .8);
+  animation: goal-zoom .7s cubic-bezier(.18, 1.6, .4, 1) both, goal-shake .12s linear .7s 8; }
+.goal__sub { font: 400 clamp(28px, 8vw, 56px)/1 var(--display); color: var(--gold); text-transform: uppercase; letter-spacing: .06em;
+  text-shadow: 0 3px 0 #2a0610; animation: goal-up .5s ease .45s both; }
+.goal__cry { font: 700 clamp(16px, 4.5vw, 24px)/1 var(--cond); color: var(--cream); text-transform: uppercase; letter-spacing: .3em;
+  background: var(--red-bright); padding: 8px 14px; border-radius: 999px; animation: goal-up .5s ease .8s both, blink .7s ease 1.3s infinite; }
+.goal__confetti { position: absolute; inset: 0; pointer-events: none; }
+.goal__confetti i { position: absolute; top: -20px; left: var(--x); width: var(--s); height: calc(var(--s) * 1.6); border-radius: 2px;
+  animation: goal-fall var(--t) cubic-bezier(.3, .2, .6, 1) var(--d) both; }
+.match-card.is-goal { animation: goal-glow .6s ease 0s 8 alternate; }
+.match-card.is-goal .versus__score { color: var(--gold); animation: goal-pop .6s ease 0s 8 alternate; }
+
+@keyframes goal-in { from { opacity: 0; } }
+@keyframes goal-out { to { opacity: 0; transform: scale(1.05); } }
+@keyframes goal-flash { 0% { background: var(--gold); } 50% { background: var(--red-bright); } 100% { background: var(--gold); } }
+@keyframes goal-fade { to { opacity: 0; } }
+@keyframes goal-spin { to { transform: rotate(360deg); } }
+@keyframes goal-zoom { from { transform: scale(.1) rotate(-12deg); opacity: 0; } }
+@keyframes goal-shake { 25% { transform: translate(-4px, 2px) rotate(-1deg); } 75% { transform: translate(4px, -2px) rotate(1deg); } }
+@keyframes goal-up { from { transform: translateY(24px); opacity: 0; } }
+@keyframes goal-fall { from { transform: translateY(0) rotate(0); } to { transform: translateY(110vh) rotate(var(--r)); } }
+@keyframes goal-glow { to { box-shadow: 0 0 0 4px var(--gold), 0 0 50px rgba(244, 178, 35, .6); } }
+@keyframes goal-pop { to { transform: scale(1.18); } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   html { scroll-behavior: auto; }
