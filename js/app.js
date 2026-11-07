@@ -91,7 +91,7 @@
   }
 
   // gol della Roma: schermo che lampeggia giallorosso, scritta enorme, coriandoli, vibrazione
-  function celebrateGoal(score, scorer) {
+  function celebrateGoal(score, scorer, min) {
     $('.goal')?.remove();
     try { navigator.vibrate?.([250, 90, 250, 90, 500]); } catch (e) { /* non supportato */ }
     const bits = Array.from({ length: 70 }, (_, i) => {
@@ -102,7 +102,7 @@
     el.className = 'goal';
     el.setAttribute('role', 'alert');
     el.innerHTML = `<div class="goal__flash"></div><div class="goal__rays"></div><div class="goal__confetti" aria-hidden="true">${bits}</div>
-      <div class="goal__text"><span class="goal__word">GOOOL!</span><span class="goal__sub">Roma ${esc(score)}${scorer ? ' · ' + esc(scorer) : ''}</span><span class="goal__cry">Daje Roma daje!</span></div>`;
+      <div class="goal__text"><span class="goal__word">GOOOL!</span><span class="goal__sub">Roma ${esc(score)}</span>${scorer || min ? `<span class="goal__who">${esc(scorer)}${scorer && min ? ' · ' : ''}${esc(min)}</span>` : ''}<span class="goal__cry">Daje Roma daje!</span></div>`;
     const close = () => { el.classList.add('is-out'); setTimeout(() => el.remove(), 400); };
     el.addEventListener('click', close);
     document.body.appendChild(el);
@@ -360,7 +360,7 @@
      ======================================================= */
   const ESPN = 'https://site.api.espn.com/apis';
   let sportOk = null;
-  let liveTimer = null, countdownTimer = null;
+  let liveTimer = null, countdownTimer = null, lastLiveFail = 0;
 
   const NAME_MAP = {
     'AS Roma': 'Roma', 'Internazionale': 'Inter', 'AC Milan': 'Milan', 'Hellas Verona': 'Verona', 'Paris Saint-Germain': 'PSG',
@@ -397,6 +397,15 @@
     }
   }
 
+  // gol della partita: squadra che segna (negli autogol è quella che ne beneficia), minuto, marcatore
+  function goalsOf(details) {
+    return details.filter(d => d.scoringPlay && !d.shootout).map(d => {
+      const a = d.athletesInvolved?.[0] || {};
+      return { team: d.team?.id, min: d.clock?.displayValue || '', who: a.shortName || a.displayName || '', og: !!d.ownGoal, pen: !!d.penaltyKick };
+    });
+  }
+  const goalLabel = g => `${g.who || 'Gol'}${g.og ? ' (aut.)' : g.pen ? ' (rig.)' : ''}`;
+
   function normEvent(e) {
     const c = e.competitions?.[0] || {};
     const side = ha => {
@@ -410,6 +419,7 @@
       id: e.id, date: Date.parse(e.date), slug, comp: COMP_MAP[slug] || (e.league?.name || '').replace(/^Italian /, '').replace(/^UEFA /, ''),
       home: side('home'), away: side('away'), state: st.state || 'pre', status: st.name || '', detail: st.shortDetail || st.detail || '',
       clock: c.status?.displayClock || '', venue: c.venue?.fullName || '', tv: (c.broadcasts || []).flatMap(b => b.names || [b.media?.shortName]).filter(Boolean),
+      ...(Array.isArray(c.details) ? { goals: goalsOf(c.details) } : {}),
     };
   }
   // cosa scrivere nel bollino LIVE: ESPN all'intervallo lascia il minuto fermo a 45'+x
@@ -472,8 +482,12 @@
       matches.next = matches.next.map(x => x.id === m.id ? nu : x);
       renderHero();
       renderFixtures();
-      if (after > before) celebrateGoal(after);
+      if (after > before) {
+        const g = (nu.goals || []).filter(x => x.team === ROMA_ID).pop();
+        celebrateGoal(after, g ? goalLabel(g) : '', g?.min || '');
+      }
     } catch (err) {
+      lastLiveFail = Date.now();
       loadMatches(true);
     }
   }
@@ -482,6 +496,11 @@
     pin: '<svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-12a7 7 0 10-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>',
     cal: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>',
     tv: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M8 21h8M9 2l3 4 3-4"/></svg>',
+  };
+  const scorers = m => {
+    const list = t => `<ul class="scorers__list${t.id === ROMA_ID ? ' is-roma' : ''}">${(m.goals || []).filter(g => g.team === t.id)
+      .map(g => `<li><span class="scorers__min">${esc(g.min)}</span> ${esc(goalLabel(g))}</li>`).join('')}</ul>`;
+    return `<div class="scorers" aria-label="Marcatori">${list(m.home)}${list(m.away)}</div>`;
   };
   const teamBlock = t => `<div class="team${t.id === ROMA_ID ? ' is-roma' : ''}"><img class="team__logo" src="${esc(t.logo)}" alt="" loading="lazy"><span class="team__name">${esc(t.name)}</span></div>`;
 
@@ -501,6 +520,7 @@
         <h2 class="eyebrow" id="heroTitle">${live ? 'In campo adesso' : 'Prossima partita'}</h2>
         <span class="comp-badge${isCup(nm) ? ' is-cup' : ''}">${esc(nm.comp)}</span>
         <div class="versus">${teamBlock(nm.home)}${mid}${teamBlock(nm.away)}</div>
+        ${live && nm.goals?.length ? scorers(nm) : ''}
         ${live ? '' : '<div class="countdown" id="countdown" aria-label="Conto alla rovescia"></div>'}
         <div class="match-meta">
           <span>${icon.cal}${esc(when)}</span>
@@ -508,7 +528,8 @@
           ${nm.tv.length ? `<span>${icon.tv}${esc(nm.tv.slice(0, 2).join(', '))}</span>` : ''}
         </div>`;
       if (live) {
-        liveTimer = setTimeout(() => pollLive(live), LIVE_EVERY);
+        const soon = !live.goals && Date.now() - lastLiveFail > LIVE_EVERY;
+        liveTimer = setTimeout(() => pollLive(live), soon ? 300 : LIVE_EVERY);
       } else {
         const tick = () => {
           const el = $('#countdown');
@@ -728,7 +749,7 @@
     window.addEventListener('offline', () => toast('Sei offline: mostro le ultime notizie salvate', 3500));
 
     // anteprima dell'animazione del gol: aggiungi ?provagol all'indirizzo
-    if (new URLSearchParams(location.search).has('provagol')) setTimeout(() => celebrateGoal(2), 1200);
+    if (new URLSearchParams(location.search).has('provagol')) setTimeout(() => celebrateGoal(2, 'R. Mora', "58'"), 1200);
 
     // aggiorno i "x min fa" ogni minuto
     setInterval(() => $$('.card__time').forEach(t => { t.textContent = ago(Date.parse(t.getAttribute('datetime'))); }), 60000);

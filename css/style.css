@@ -159,6 +159,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .versus__mid { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .versus__vs { font: 400 22px/1 var(--display); color: rgba(255, 255, 255, .5); }
 .versus__score { font: 400 clamp(40px, 11vw, 64px)/1 var(--display); color: var(--cream); letter-spacing: .04em; white-space: nowrap; }
+.scorers { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; margin: -4px 0 16px; }
+.scorers__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; align-content: start; justify-self: center; width: fit-content; max-width: 100%;
+  font: 600 15px/1.2 var(--cond); letter-spacing: .02em; color: var(--cream); }
+.scorers__list li { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
+.scorers__list.is-roma { color: var(--gold-soft); }
+.scorers__min { min-width: 2.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .live-pill { font: 700 12px/1 var(--cond); letter-spacing: .16em; padding: 5px 9px; border-radius: 999px; background: var(--red-bright); color: #fff; animation: blink 1.4s infinite; }
 @keyframes blink { 50% { opacity: .55; } }
 
@@ -391,6 +397,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
   animation: goal-zoom .7s cubic-bezier(.18, 1.6, .4, 1) both, goal-shake .12s linear .7s 8; }
 .goal__sub { font: 400 clamp(28px, 8vw, 56px)/1 var(--display); color: var(--gold); text-transform: uppercase; letter-spacing: .06em;
   text-shadow: 0 3px 0 #2a0610; animation: goal-up .5s ease .45s both; }
+.goal__who { font: 600 clamp(20px, 5.5vw, 32px)/1 var(--cond); color: var(--cream); text-transform: uppercase; letter-spacing: .08em;
+  text-shadow: 0 2px 0 #2a0610; animation: goal-up .5s ease .6s both; }
 .goal__cry { font: 700 clamp(16px, 4.5vw, 24px)/1 var(--cond); color: var(--cream); text-transform: uppercase; letter-spacing: .3em;
   background: var(--red-bright); padding: 8px 14px; border-radius: 999px; animation: goal-up .5s ease .8s both, blink .7s ease 1.3s infinite; }
 .goal__confetti { position: absolute; inset: 0; pointer-events: none; }
